@@ -1,0 +1,576 @@
+---
+title: "Análisis de Supervivencia"
+author: "María C Palla"
+date: "`r Sys.Date()`"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+#runtime: shiny
+---
+
+
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+```
+
+# Introducción
+
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+### **¿Qué es el Análisis de Supervivencia?**
+
+```{r}
+
+```
+
+El análisis de supervivencia constituye una herramienta estadística para estudiar el tiempo transcurrido hasta la ocurrencia de un evento de interés en diferentes disciplinas: se conoce como "modelos de duración" en ciencia política y economía, "modelos de riesgo" en bioestadística, y "modelos de tiempo hasta el fallo" en ingeniería.
+
+Los datos de supervivencia, también conocidos como datos de tiempo hasta el evento, requieren un conjunto especial de métodos estadísticos por el fenómeno de **la censura**, que se produce cuando el evento de interés no se observa para algunos sujetos durante el período de estudio. Por ejemplo, esto podría corresponder a pacientes que abandonan el seguimiento o cuyo tratamiento se interrumpe antes de observar la progresión de la enfermedad.
+
+_Censura: La censura se produce cuando al final del seguimiento, algunos de los individuos no han tenido el evento de interés, y por lo tanto su verdadero tiempo hasta el evento es desconocido._
+
+En el contexto biomédico, el análisis de supervivencia modela la distribución temporal de eventos como la muerte, recaída de enfermedades o fallo terapéutico. La variable principal es el tiempo hasta el evento, definido como el intervalo entre un punto de origen (diagnóstico, inicio de tratamiento) y la ocurrencia del evento o la última observación (censurada).
+
+Para abordar esta complejidad añadida, se utiliza el **método de Kaplan-Meier**, un método no paramétrico que incorpora la información parcial de los casos censurados.
+
+Suele expresarse mediante la probabilidad de supervivencia (**survival probability**), que es la probabilidad de que el suceso de interés no haya ocurrido en una duración $t$.
+
+La estimación de Kaplan-Meier se construye mediante el producto de las probabilidades condicionales de supervivencia en cada tiempo observado: $$\hat{S}(t) = \prod_{i: t_i \leq t} \left(1 - \frac{d_i}{n_i}\right)$$ Donde $d_i$ son los eventos en el tiempo $t_i$ y $n_i$ los individuos en riesgo inmediatamente antes de $t_i$.
+
+
+Las funciones principales en el análisis de supervivencia son:
+
+**Función de Supervivencia S(t)**
+
+- Representa la probabilidad de que un individuo sobreviva más allá del tiempo t. (Interpretación práctica: Probabilidad de que los pacientes sobrevivan más de t unidades de tiempo)
+- Para cada tiempo $t$, está dada por $$S(t) = P(T > t) = 1 - F(t)$$ donde $F(t)$ es la función de distribución acumulada
+
+Propiedades:
+
+- Es una función decreciente
+- Toma valores entre 0 y 1 (es una probabilidad)
+- En $t=0, S(0)=1$ (100% de supervivencia al inicio)
+- Cuando $t→∞, S(∞)=0$
+- Ejemplo interpretación clínica: En cáncer de pulmón, $S(24) = 0.35$ indica un 35% de supervivencia a 2 años
+
+**Función de Riesgo Acumulado H(t)**
+
+- Se define como $$H(t) = -log(S(t))$$ y se enfoca en la probabilidad instantánea de que ocurra el evento.
+
+
+**Función de Riesgo (Hazard Function) h(t)**
+
+- Define la tasa instantánea de eventos en el tiempo t para individuos que han sobrevivido hasta ese momento, proporciona una medida del riesgo total experimentado hasta el tiempo t
+- Se puede obtener como:
+  $$h(t) = \lim_{\Delta t \to 0} \frac{P(t \leq T < t + \Delta t|T \geq t)}{\Delta t}$$
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+### **Análisis Supervivencia Global con Kaplan-Meier**
+
+```{r}
+
+# Cargar las librerías necesarias
+library(survival)
+library(ggplot2)
+library(dplyr)
+
+
+# Generar datos de edad (0 a 120 años)
+x <- seq(0, 120, by = 0.1)
+
+# Crear funciones para aproximar la mortalidad humana
+# Usando una combinación de distribución Weibull modificada
+
+# Función de supervivencia
+s_function <- function(x) {
+    exp(-(x/80)^4)
+}
+
+# Función de densidad
+d_function <- function(x) {
+    4/80 * (x/80)^3 * exp(-(x/80)^4)
+}
+
+# Función de riesgo
+h_function <- function(x) {
+    4/80 * (x/80)^3
+}
+
+# Generar los datos
+datos <- data.frame(
+    age = x,
+    # Función de densidad (pdf)
+    density = d_function(x),
+    # Función de distribución acumulada (CDF)
+    cdf = 1 - s_function(x),
+    # Función de supervivencia
+    survival = s_function(x),
+    # Función de riesgo (hazard)
+    hazard = h_function(x)
+)
+
+# Normalizar la función de riesgo para mejor visualización
+datos$hazard <- datos$hazard / max(datos$hazard)
+
+# Crear el gráfico
+ggplot(datos, aes(x = age)) +
+    # Función de densidad
+    geom_line(aes(y = density, linetype = "Density: f(t)")) +
+    # CDF
+    geom_line(aes(y = cdf, linetype = "CDF: F(t)")) +
+    # Función de supervivencia
+    geom_line(aes(y = survival, linetype = "Survival: S(t) = P(T > t)")) +
+    # Función de riesgo
+    geom_line(aes(y = hazard, color = "Hazard: h(t) = f(t)/S(t)")) +
+    # Personalización
+    scale_linetype_manual(name = "",
+                         values = c("Density: f(t)" = "solid",
+                                  "CDF: F(t)" = "dotted",
+                                  "Survival: S(t) = P(T > t)" = "longdash")) +
+    scale_color_manual(name = "", values = c("Hazard: h(t) = f(t)/S(t)" = "red")) +
+    labs(x = "Años de Edad",
+         y = "",
+         title = "Ejemplo Funciones Density, CDF, Survival, & Hazard",
+         #subtitle = "S(t) = 1 - F(t)   |   h(t) = -d/dt[log S(t)]") +
+         subtitle = "Mortalidad Humana") +
+    theme_minimal() +
+    theme(legend.position = "bottom",
+          plot.title = element_text(hjust = 0.5, size = 14),
+          plot.subtitle = element_text(hjust = 0.5, size = 12),
+          axis.text = element_text(size = 10),
+          axis.title = element_text(size = 12),
+          legend.text = element_text(size = 10)) +
+    guides(linetype = guide_legend(order = 1, ncol = 2),
+           color = guide_legend(order = 2, ncol = 2)) +
+    coord_cartesian(ylim = c(0, 1))
+
+```
+
+
+### **Análisis de Supervivencia por Grupo**
+
+```{r}
+
+# Crear datos de ejemplo con dos grupos
+set.seed(123)
+n <- 1000
+grupo <- rep(c("A", "B"), each = n/2)
+tiempo <- c(rexp(n/2, rate = 0.1), rexp(n/2, rate = 0.15)) # genera tiempos de supervivencia siguiendo una distribución exponencial. El grupo B tiene una tasa mayor, lo que significa tiempos de supervivencia más cortos en promedio.
+
+
+censura <- runif(n) > 0.3 # runif(n) genera 200 números aleatorios uniformes entre 0 y 1. > 0.3 convierte estos números en valores lógicos (TRUE/FALSE). Aproximadamente 70% serán TRUE (cuando el número aleatorio > 0.3)
+tiempo[!censura] <- pmin(tiempo[!censura], runif(sum(!censura), 0, max(tiempo))) # Generamos tiempos aleatorios para los censurados. Usamos pmin() para asegurarnos que tiempo de seguimiento es menor que su tiempo potencial de evento (original)
+
+
+datos <- data.frame(
+  tiempo = tiempo,
+  evento = censura,
+  grupo = grupo
+)
+
+# Ajustar el modelo de supervivencia por grupos
+km_fit <- survfit(Surv(tiempo, evento) ~ grupo, data = datos)
+
+# Convertir a dataframe para ggplot
+km_df <- data.frame(
+  tiempo = km_fit$time,
+  supervivencia = km_fit$surv,
+  lower = km_fit$lower,
+  upper = km_fit$upper,
+  grupo = rep(c("A", "B"), km_fit$strata)
+)
+
+# Crear el gráfico
+ggplot(km_df, aes(x = tiempo, y = supervivencia, color = grupo, fill = grupo)) +
+  geom_step(size = 1) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
+  scale_y_continuous(limits = c(0, 1), 
+                    breaks = seq(0, 1, 0.25), 
+                    labels = scales::percent) +
+  scale_color_manual(values = c("#E41A1C", "#377EB8")) +
+  scale_fill_manual(values = c("#E41A1C", "#377EB8")) +
+  labs(x = "Tiempo",
+       y = "Probabilidad de supervivencia",
+       title = "Curvas de Supervivencia Kaplan-Meier por Grupo",
+       subtitle = "Tasa de Riesgo Grupo A 10% vs Grupo B 15%",
+       color = "Grupo",
+       fill = "Grupo") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 12),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10),
+    panel.grid.minor = element_blank(),
+    legend.position = "bottom"
+  )
+
+
+
+```
+
+
+
+# Ejemplo Análisis Supervivencia Global
+
+
+Column {data-width=450}
+-----------------------------------------------------------------------
+
+### **Análisis Supervivencia con el dataset *Melanom* **
+
+```{r}
+
+#install.packages("ISwR")
+#install.packages("formattable")
+library(ISwR)  
+library(kableExtra)
+library(dplyr)
+library(formattable)
+
+data("melanom", package='ISwR') # Load the melanom dataset
+
+df <- melanom
+
+ # Transform variables
+
+categoric_cols <- c("sex", "ulc")
+for (col in categoric_cols) {
+  df[[col]] <- as.factor(df[[col]])
+}
+
+df$status <- as.numeric(recode(df$status, '1'="0", '2'="0", '3'="1"))
+
+ft_dt <- df[, 2:6]
+
+ft_dt$status <- ifelse(
+  ft_dt$status == 1,
+  cell_spec("Muerte por melanoma", color = "grey", bold = T),
+  cell_spec("Censurado", italic = T)
+)
+
+ft_dt$ulc <- ifelse(
+  ft_dt$ulc == 1,
+  cell_spec("No ulcerado", color = "lightgreen", bold = T),
+  cell_spec("Ulcerado", color = "orange", italic = T)
+)
+
+ft_dt$sex <- ifelse(
+  ft_dt$sex == 2,
+  cell_spec("Mujer", color = "lightpink", bold = T),
+  cell_spec("Hombre", color = "lightblue", italic = T)
+)
+
+
+kbl(ft_dt, escape = F) %>%
+  kable_paper("hover", full_width = F) %>%
+  #column_spec(5, width = "3cm") %>%
+  #add_header_above(c(" ", "Dataset" = 2, "Melanom" = 2)) %>%
+  kable_paper() %>%
+  scroll_box(width = "75%", height = "200px")
+
+
+
+```
+El dataset *melanom* contiene información sobre pacientes con melanoma:
+
+- **no**: Identificador único del paciente
+- **status**: Variable que indica el estado del paciente:
+  * 1 = Muerte por otras causas (censurado)
+  * 2 = Vivo (censurado)
+  * 3 = Muerte por melanoma (evento)
+- **days**: Tiempo de supervivencia en días desde el diagnóstico hasta:
+  * La muerte por melanoma 
+  * La censura (muerte por otras causas o fin del seguimiento)
+- **ulc**: Presencia o ausencia de ulceración en el tumor. Variable binaria:
+  * 1 = No ulcerado
+  * 2 = Ulcerado
+- **thick**: Grosor del tumor en milésimas de milímetro
+- **sex**: Sexo del paciente. Variable binaria:
+  * 1 = Hombre
+  * 2 = Mujer
+
+
+Column {data-width=550}
+-----------------------------------------------------------------------
+
+### **Análisis de Supervivencia Global con Kaplan-Miller**
+
+```{r}
+
+#install.packages("survminer")
+#install.packages("survival")
+
+library(survminer)
+library(survival)
+
+# Objeto de supervivencia
+surv_obj <- Surv(time = df$days/30, event = df$status)
+
+# Ajustar modelo de supervivencia
+km_fit <- survfit(surv_obj ~ 1, data = df)
+
+# Crear el gráfico con ggplot2
+ggsurvplot(km_fit,
+           data = df,
+           surv.scale = "percent",
+           #scale = "d_m",
+           cum_events = TRUE,
+           surv.median.line = "hv",
+           risk.table = TRUE,       # Mostrar tabla de riesgo
+           conf.int = TRUE,         # Mostrar intervalos de confianza
+           xlab = "Tiempo (meses)",   # Etiqueta del eje x
+           ylab = "Probabilidad de supervivencia", # Etiqueta del eje y
+           title = "Curva de supervivencia global Melanoma", # Título del gráfico
+           #legend.title = "Sexo",    # Título de la leyenda
+           ggtheme = theme_bw(),      # Tema del gráfico
+           palette = c("#E7B800", "#C45653"))  # Paleta de colores
+
+```
+
+
+
+### **Análisis de los resultados**
+
+```{r}
+
+```
+**Conclusiones:**
+
+- La curva se mantiene muy cercana al 100% durante los primeros 50 meses, lo que indica muy pocos eventos (muertes) en este período.
+- Entre los 50 y 100 meses hay una ligera caída, pero es gradual y relativamente pequeña.
+- La probabilidad de supervivencia se mantiene por encima del 75% durante todo el seguimiento, por lo que el pronóstico general parece favorable.
+
+**Limitaciones del modelo:**
+
+- La precisión de las estimaciones disminuye con el tiempo (intervalos de confianza más amplios)
+- Pocos pacientes en seguimiento después de los 150 meses limita las conclusiones a largo plazo
+
+
+
+# Ejemplo Análisis Supervivencia Univariable
+
+
+Column {data-width=450}
+-----------------------------------------------------------------------
+
+### **Análisis Supervivencia Univariable**
+
+```{r}
+
+# # Filtro para seleccionar la variable categórica
+# selectInput("category_var", "Selecciona una variable categórica:", choices = category_cols)
+# 
+# # Gráfico de Kaplan-Meier
+# renderPlot({
+#   # Filtrar datos por hospital (si se seleccionó uno)
+#   if (!is.null(input$category_var)) {
+#   
+#     # Variable categórica seleccionada
+#     selected_var <- input$category_var
+#   
+#     # Ajustar modelo de supervivencia
+#     km_fit <- survfit(surv_obj ~ df[[selected_var]], data = df)
+# 
+#     ggsurvplot(km_fit, 
+#            data = df,
+#            surv.scale = "percent",
+#            #scale = "d_m",
+#            cum_events = TRUE,
+#            #surv.median.line = "h",
+#            risk.table = TRUE,       # Mostrar tabla de riesgo
+#            conf.int = TRUE,         # Mostrar intervalos de confianza
+#            xlab = "Tiempo (meses)",   # Etiqueta del eje x
+#            ylab = "Probabilidad de supervivencia", # Etiqueta del eje y
+#            title = "Curva de supervivencia global Melanoma", # Título del gráfico
+#            legend.title = "Categoría",    # Título de la leyenda
+#            #legend.labs = c("Hombre", "Mujer"),
+#            ggtheme = theme_bw(),      # Tema del gráfico
+#            palette = c("#E7B800", "#C45653"))  # Paleta de colores 
+#   }
+# })
+
+
+# Ajustar modelo de supervivencia
+km_fit <- survfit(surv_obj ~ sex, data = df)
+
+# Crear el gráfico con ggplot2
+ggsurvplot(km_fit,
+           data = df,
+           surv.scale = "percent",
+           #scale = "d_m",
+           cum_events = TRUE,
+           #surv.median.line = "hv",
+           risk.table = TRUE,       # Mostrar tabla de riesgo
+           conf.int = TRUE,         # Mostrar intervalos de confianza
+           xlab = "Tiempo (meses)",   # Etiqueta del eje x
+           ylab = "Probabilidad de supervivencia", # Etiqueta del eje y
+           title = "Curva de supervivencia Melanoma por Sexo", # Título del gráfico
+           legend.title = "Sexo",    # Título de la leyenda
+           legend.labs = c("Hombre", "Mujer"),
+           ggtheme = theme_bw(),      # Tema del gráfico
+           palette = c("#E7B800", "#C45653"))  # Paleta de colores
+
+```
+
+Column {data-width=550}
+-----------------------------------------------------------------------
+
+### **Modelo de Cox**
+
+Con el modelo de Cox, modelamos el impacto de diferentes factores $X1,X2,...,Xq$ en la supervivencia a través de su impacto en la función de riesgo:
+
+$$h(t|X) = h_0(t)\exp(\beta_1X_1 + \beta_2X_2 + \cdots + \beta_qX_q)$$
+donde:
+
+- $h(t|X)$ es la tasa instantánea de muerte condicionada a haber sobrevivido hasta el tiempo t.
+- $h0(t)$ es la función de riesgo subyacente. Describe cómo evoluciona el riesgo promedio de una persona a lo largo del tiempo.
+- $exp(β1X1+β2X2+⋯+βqXq)$ describe cómo las covariables afectan al riesgo. En particular, un aumento de una unidad en xi conduce a un aumento del riesgo por un factor de exp(βi).
+
+```{r}
+
+
+
+
+
+```
+
+### **Análisis Regresión de Cox**
+
+```{r}
+cox_model <- coxph(surv_obj ~ sex, data=df)
+summary_cox <- summary(cox_model)
+
+cox_results <- data.frame(
+  Variable = "Sexo (Mujer vs Hombre)",
+  HR = round(summary_cox$coefficients[, "exp(coef)"], 2),
+  CI_lower = round(summary_cox$conf.int[1, "lower .95"], 2),
+  CI_upper = round(summary_cox$conf.int[1, "upper .95"], 2),
+  p_value = round(summary_cox$coefficients[, "Pr(>|z|)"], 2)
+)
+
+#summary_cox
+
+kbl(cox_results) %>%
+  kable_paper("striped", full_width = F) %>%
+  row_spec(0, bold = T, color = "white", background = "lightgreen")
+
+```
+
+- Riesgo en mujeres: Aunque el Hazard Ratio (HR) de 1.88 sugiere que las mujeres tienen un riesgo 88% mayor de morir por melanoma en comparación con los hombres, este resultado no es estadísticamente significativo.
+- Incertidumbre: El intervalo de confianza (CI) amplio (0.66 - 5.37) y el valor p alto (0.24) indican que hay mucha incertidumbre en esta estimación. No podemos descartar que el verdadero HR sea incluso menor que 1 (lo que significaría un menor riesgo en mujeres).
+- Conclusión: No hay evidencia suficiente para afirmar que el sexo femenino influya en la supervivencia en pacientes con melanoma según este estudio.
+
+
+# Ejemplo Análisis Supervivencia Multi-variable
+
+
+
+Column {data-width=450}
+-----------------------------------------------------------------------
+
+### **El conjunto de datos _Lung_**
+
+
+
+Utilizamos el **conjunto de datos lung** disponible en el paquete survival. Los datos contienen sujetos con cáncer de pulmón avanzado del North Central Cancer Treatment Group. Incluye las siguientes 10 variables:
+
+* inst: Código de la institución
+* time: Tiempo de supervivencia en días
+* status: estado de censura 1=censurado, 2=fallecido
+* age: Edad en años
+* sex: Hombre=1 Mujer=2
+* ph.ecog: Puntuación de rendimiento ECOG evaluada por el médico. 0=asintomático, 1=sintomático pero completamente ambulatorio, 2=en cama <50% del día, 3=en cama >50% del día pero no postrado, 4=postrado
+* ph.karno: Puntuación de rendimiento Karnofsky (malo=0-bueno=100) evaluada por el médico
+* pat.karno: Puntuación de rendimiento Karnofsky (0=malo, 100=bueno) evaluada por el paciente
+* meal.cal: Calorías consumidas en las comidas
+* wt.loss: Pérdida de peso en los últimos seis meses
+
+```{r}
+
+#install.packages("DataExplorer")
+#install.packages("dlookr")
+#install.packages("summarytools")
+
+
+library(tidyverse)
+library(survival)
+library(survminer)
+library(kableExtra)
+library(DataExplorer) # for EDA
+
+df <- survival::lung
+
+
+categoric_cols <- c("sex", "ph.ecog")
+for (col in categoric_cols) {
+   df[[col]] <- as.factor(df[[col]])
+ }
+ 
+df$status <- as.numeric(recode(df$status, '1'="0", '2'="1"))
+# 
+# summary(df2)
+
+ft_dt <- df[, 2:10]
+
+mod1 = coxph(Surv(time, status) ~ age * sex + ph.ecog + ph.karno + pat.karno + meal.cal + wt.loss, data=ft_dt)
+#print(mod1)
+
+summary_cox <- summary(mod1)
+ 
+cox_results <- data.frame(
+  Variables = rownames(summary_cox$coefficients),
+  HR = round(summary_cox$coefficients[, "exp(coef)"], 2),
+  CI_lower = round(summary_cox$conf.int[, "lower .95"], 2),
+  CI_upper = round(summary_cox$conf.int[, "upper .95"], 2),
+  p_value = round(summary_cox$coefficients[, "Pr(>|z|)"], 4)
+)
+
+#cox_results
+
+
+```
+
+Column {data-width=550}
+-----------------------------------------------------------------------
+
+### **Regresión Cox Multivariable**
+
+Este análisis considera el efecto conjunto de las variables, lo que significa que los resultados están ajustados por las otras variables en el modelo.
+
+```{r results='hold'}
+
+p_valor <- round(summary_cox$waldtest["pvalue"], 6)
+
+kbl(cox_results, "html", row.names = FALSE) %>%
+  kable_styling()  %>%
+  kable_paper("striped", full_width = F) %>%
+  row_spec(0, bold = T, color = "white", background = "lightgreen")
+
+```
+
+### **Análisis Resultados Regresión Cox Multivariable**
+
+El modelo en su conjunto es estadísticamente significativo (`r p_valor`), lo que indica que las variables incluidas en el modelo (ph.ecog, ph.karno, wt.loss) en conjunto tienen un efecto significativo en la supervivencia.
+
+Variables significativas individualmente:
+
+- Estado funcional (ph.ecog): El estado funcional del paciente es un predictor muy importante de supervivencia.
+- Los pacientes sintomáticos pero ambulatorios (ph.ecog1) tienen casi el doble de riesgo de morir que los asintomáticos.
+- Los pacientes que están en cama menos del 50% del día (ph.ecog2) tienen casi 5 veces más riesgo.
+- Los pacientes que están en cama más del 50% del día (ph.ecog3) tienen 16.5 veces más riesgo.
+Índice de Karnofsky (ph.karno): Un mayor índice de Karnofsky (mejor estado funcional) se asocia con una mejor supervivencia. Por cada punto que aumenta el índice, el riesgo de morir disminuye un 2.4%.
+- Pérdida de peso (wt.loss): La pérdida de peso se asocia con un mayor riesgo de morir. Por cada unidad de pérdida de peso, el riesgo aumenta un 1.6%. 
+
+El estado funcional del paciente (medido con la escala ph.ecog) es el factor más importante en este modelo para predecir la supervivencia.
+
+```{r}
+
+
+```
+
